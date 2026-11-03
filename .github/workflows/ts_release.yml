@@ -1,9 +1,16 @@
 name: Build and Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: 'Тип релиза (dev или matrix)'
+        required: true
+        default: 'dev'
   push:
     tags:
       - "*"
+
 
 jobs:
   build:
