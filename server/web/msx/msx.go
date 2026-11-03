@@ -22,6 +22,27 @@ const base, files = "tsmsx.yourok.ru", "media"
 
 var param = "menu:request:interaction:{SERVER}@{PREFIX}" + base + "/start.html"
 
+// buildParam собирает строку запуска MSX. Если включена HTTP-авторизация,
+// то в {SERVER} подставляется user:pass@host:port — встроенный браузер MSX
+// передаёт эти учётные данные при каждом запросе, поэтому логин/пароль
+// вводить руками не нужно.
+func buildParam() string {
+	p := param
+	if settings.HttpAuth {
+		if accs := auth.GetAccounts(); len(accs) > 0 {
+			user, pass := "", ""
+			for u, p2 := range accs { // берём первую учётную запись
+				user, pass = u, p2
+				break
+			}
+			if user != "" && pass != "" {
+				p = strings.Replace(p, "{SERVER}", "{PREFIX}"+user+":"+pass+"@{SERVER}", 1)
+			}
+		}
+	}
+	return p
+}
+
 func trn(h string) (st, sc string) {
 	if h := torr.GetTorrent(h); h != nil {
 		if h := h.Status(); h != nil && h.Stat < 5 {
@@ -51,25 +72,35 @@ func rsp(c *gin.Context, r *http.Response, e error) {
 func SetupRoute(r gin.IRouter) {
 	authorized := r.Group("/", auth.CheckAuth())
 	// MSX:
-	authorized.GET("/msx/", func(c *gin.Context) {
-		r, e := http.Get("http://" + base)
-		rsp(c, r, e)
+	// start.json доступен без авторизации (MSX не умеет отправлять Basic Auth),
+	// чтобы приложение можно было запустить даже при включенном HttpAuth.
+	msxPublic := r.Group("/msx")
+	msxPublic.Use(func(c *gin.Context) {
+		if c.Request.URL.Path == "/msx/start.json" {
+			c.Next()
+			return
+		}
+		auth.CheckAuth()(c)
 	})
-	authorized.GET("/msx/start.json", func(c *gin.Context) {
+	msxPublic.GET("/start.json", func(c *gin.Context) {
 		c.JSON(http.StatusOK, map[string]any{
 			"name":      "TorrServer",
 			"version":   version.Version,
-			"parameter": param,
+			"parameter": buildParam(),
 			"launcher": map[string]any{
 				"type":  "start",
 				"image": utils.GetScheme(c) + "://" + c.Request.Host + "/logo.png",
 			},
 		})
 	})
-	authorized.POST("/msx/start.json", func(c *gin.Context) {
+	msxPublic.POST("/start.json", func(c *gin.Context) {
 		if e := c.BindJSON(&param); e != nil {
 			c.AbortWithError(http.StatusBadRequest, e)
 		}
+	})
+	authorized.GET("/msx/", func(c *gin.Context) {
+		r, e := http.Get("http://" + base)
+		rsp(c, r, e)
 	})
 	authorized.GET("/msx/trn", func(c *gin.Context) {
 		r := false
