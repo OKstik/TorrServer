@@ -18,14 +18,14 @@ func SetupAuth(engine *gin.Engine) {
 	if !settings.HttpAuth {
 		return
 	}
-	accs := getAccounts()
+	accs := GetAccounts()
 	if accs == nil {
 		return
 	}
 	engine.Use(BasicAuth(accs))
 }
 
-func getAccounts() gin.Accounts {
+func GetAccounts() gin.Accounts {
 	buf, err := os.ReadFile(filepath.Join(settings.Path, "accs.db"))
 	if err != nil {
 		return nil
